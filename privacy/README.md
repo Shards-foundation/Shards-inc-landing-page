@@ -41,3 +41,32 @@ The only connected Stripe account is **Shards Inc. sandbox** (`livemode=false`).
 7. E2E: verified journey account -> payment -> entitlement -> each resource -> consumption -> cancellation -> revocation; fail closed for any unavailable provider.
 
 **Decision:** do not activate customer payments until real providers are connected and every promise in the selected plan is deliverable.
+
+## Live privacy toolkit (2026-11-09 extension)
+
+**Public URL:** https://privacy.shardsinc.co.uk/lab
+
+The Privacy Lab contains ten working modules:
+1. Have I Been Pwned Pwned Passwords exposure check: browser SHA-1 hash; send only first 5 hexadecimal characters to a fixed-upstream server proxy; client matches returned suffixes. False negatives do not imply safety. Known test password matched 52,372,427 occurrences in the verified HIBP response.
+2. Cloudflare DNS-over-HTTPS: strict hostname/type allowlist, single fixed resolver origin, A/AAAA/MX/TXT/NS/CAA/CNAME lookups and SPF/DMARC record inspection. Queries are sent to Cloudflare.
+3. File integrity: local SHA-256/SHA-384/SHA-512, limited to 25 MiB.
+4. Image metadata scrubber: local canvas re-encode to JPEG, removing commonly embedded metadata, 20 MiB / 24 Mp image limits. Re-encoding removes alpha/transparency and can alter visual quality. No guarantee about downstream metadata.
+5. Cryptographic random 256-bit tokens and UUIDv4 from browser CSPRNG.
+6. Local common-pattern PII text redaction; cannot guarantee all identifiers were found.
+7. AES-256-GCM encrypted note and file export using PBKDF2-SHA256 with 350,000 iterations, 16-byte random salt, 12-byte random IV. No server persistence or key recovery.
+8. Browser privacy posture and permissions introspection without requesting permissions.
+9. Local RFC 6238 SHA-1 TOTP (6 digit / 30 seconds) derived from a user-entered Base32 secret. Do not enter authenticator seeds on untrusted websites.
+10. Pasted HTTP security-header analysis; presence alone is not correctness.
+
+**Third-party disclosure boundary:** DNS lookup names are sent to Cloudflare DoH. For HIBP, only the first five hex digits of a browser-computed SHA-1 hash cross the service boundary. Other Lab input content is designed to stay on the browser. This does not protect against compromised devices, malicious browser extensions, or future compromised site code.
+
+**On-chain privacy:** Tornado Cash is not embedded, deployed, relayed, or monetised. US OFAC delisted Tornado Cash on March 21 2025, but UK commercial applicability and sanctions/financial promotion obligations need specialist legal review. The Lab provides research links only.
+
+### Additional checks performed
+- Independent fresh public request of the /lab page: HTTP 200, correct title and feature names.
+- Independent fresh public request of /lab.js: HTTP 200; client JavaScript parsed successfully as JavaScript.
+- Independent fresh public request of /api/dns?name=example.com&type=A: HTTP 200, real records with Status=0.
+- Independent fresh public request of /api/pwned?prefix=5BAA6: HTTP 200, known breached-password suffix match with count; never queried plaintext.
+- Regression workflow runs worker/client syntax checks, deployed Lab responses and real HIBP/DoH checks. A passing CI report is required before treating subsequent modifications as verified.
+
+**Not yet verified:** manual mobile interactive tool-by-tool runs, end-to-end full user-flow, file-specific cross-browser compatibility, paid subscriptions, and legal approval for crypto transaction processing.
