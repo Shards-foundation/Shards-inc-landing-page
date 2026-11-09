@@ -1,0 +1,110 @@
+name: Privacy portal public smoke
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "privacy/**"
+      - ".github/workflows/privacy-smoke.yml"
+jobs:
+  public-live-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the actual custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 8 --retry-delay 5 --connect-timeout 8 --max-time 30             -D /tmp/portal-headers.txt https://privacy.shardsinc.co.uk/             -o /tmp/privacy.html
+          grep -F 'Shards Privacy | Control Your Exposure' /tmp/privacy.html
+          grep -F 'Duck Email Protection' /tmp/privacy.html
+          grep -F 'Burner Numbers' /tmp/privacy.html
+          grep -i 'x-frame-options: DENY' /tmp/portal-headers.txt
+      - name: Verify live telemetry API, without logging client IP
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 8 --retry-delay 5 --connect-timeout 8 --max-time 30             https://privacy.shardsinc.co.uk/api/network -o /tmp/network.json
+          node -e "const f=require('fs');const j=JSON.parse(f.readFileSync('/tmp/network.json','utf8'));if(!j.ip||!j.country||!j.colo)process.exit(1);console.log('HTTP API contract: PASS')"
+      - name: Assert unknown path is not a fake screen
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' https://privacy.shardsinc.co.uk/does-not-exist)
+          test "$code" = "404"
+
+      - name: Parse the deployed worker and local browser-tool JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check privacy/worker.js
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const vm = require('node:vm');
+          const source = fs.readFileSync('privacy/worker.js', 'utf8');
+          const match = source.match(/^const LAB_CLIENT = ("(?:\\.|[^"\\])*");/m);
+          if (!match) throw Error('Missing privacy client script');
+          const client = JSON.parse(match[1]);
+          new vm.Script(client, { filename: 'privacy-lab.js' });
+          for (const required of ['vaultEncrypt', 'breachCheck', 'dnsCheck', 'stripImage', 'totpGenerate']) {
+            if (!client.includes(required)) throw Error('Tool missing: ' + required);
+          }
+          console.log('Browser privacy tools syntax and module wiring: PASS');
+          NODE
+      - name: Verify public Privacy Lab page and JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 4 --retry-delay 2 https://privacy.shardsinc.co.uk/lab -o /tmp/lab.html
+          grep -F 'Privacy Lab | Shards Privacy' /tmp/lab.html
+          grep -F 'Breached password check' /tmp/lab.html
+          grep -F 'Encrypted notes vault' /tmp/lab.html
+          curl -fsS --retry 4 --retry-delay 2 https://privacy.shardsinc.co.uk/lab.js -o /tmp/lab.js
+          node --check /tmp/lab.js
+      - name: Verify real encrypted DNS and input validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 4 --retry-delay 2 'https://privacy.shardsinc.co.uk/api/dns?name=example.com&type=A' -o /tmp/dns.json
+          node -e "const j=require('/tmp/dns.json');if(j.Status!==0||!(j.Answer||[]).some(x=>x.type===1&&x.data))process.exit(1)"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' 'https://privacy.shardsinc.co.uk/api/dns?name=127.0.0.1&type=A')
+          test "$code" = 400
+      - name: Verify known-compromised password via k-anonymity
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 4 --retry-delay 2 'https://privacy.shardsinc.co.uk/api/pwned?prefix=5BAA6' -o /tmp/pwned-range.txt
+          grep -q '^1E4C9B93F3F0682250B6CF8331B7EE68FD8:' /tmp/pwned-range.txt
+          code=$(curl -sS -o /dev/null -w '%{http_code}' 'https://privacy.shardsinc.co.uk/api/pwned?prefix=invalid')
+          test "$code" = 400
+
+      - name: Verify official HIBP email integration and privacy guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 4 --retry-delay 2 https://privacy.shardsinc.co.uk/lab -o /tmp/privacy-email.html
+          grep -F 'Has your email appeared in a data breach?' /tmp/privacy-email.html
+          grep -F 'CHECK EMAIL' /tmp/privacy-email.html
+          grep -F 'Have I Been Pwned' /tmp/privacy-email.html
+          curl -fsS https://privacy.shardsinc.co.uk/api/email-breaches/status -o /tmp/hibp-status.json
+          node -e "const j=require('/tmp/hibp-status.json');if(j.source!=='Have I Been Pwned'||j.mode!=='official_test_only'||j.can_query_real_addresses!==false)process.exit(1);console.log('Official test mode verified')"
+          code=$(curl -sS -o /tmp/hibp-deny.json -w '%{http_code}' -X POST https://privacy.shardsinc.co.uk/api/email-breaches \
+            -H 'Content-Type: application/json' -H 'Origin: https://privacy.shardsinc.co.uk' \
+            --data '{"email":"someone@example.org","consent":true}')
+          test "$code" = 503
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST https://privacy.shardsinc.co.uk/api/email-breaches \
+            -H 'Content-Type: application/json' -H 'Origin: https://privacy.shardsinc.co.uk' \
+            --data '{"email":"multiple-breaches@hibp-integration-tests.com","consent":false}')
+          test "$code" = 400
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST https://privacy.shardsinc.co.uk/api/email-breaches \
+            -H 'Content-Type: application/json' -H 'Origin: https://not-shards.example' \
+            --data '{"email":"multiple-breaches@hibp-integration-tests.com","consent":true}')
+          test "$code" = 403
+          curl -fsS --retry 2 --retry-delay 4 -X POST https://privacy.shardsinc.co.uk/api/email-breaches \
+            -H 'Content-Type: application/json' -H 'Origin: https://privacy.shardsinc.co.uk' \
+            --data '{"email":"multiple-breaches@hibp-integration-tests.com","consent":true}' -o /tmp/hibp-match.json
+          node -e "const j=require('/tmp/hibp-match.json');if(j.source!=='Have I Been Pwned'||j.mode!=='official_integration_test'||j.count!==3||!j.breaches.includes('Adobe')||JSON.stringify(j).includes('multiple-breaches@'))process.exit(1);console.log('Actual upstream 3-breach fixture PASS')"
+
+          curl -fsS --retry 2 --retry-delay 4 -X POST https://privacy.shardsinc.co.uk/api/email-breaches \
+            -H 'Content-Type: application/json' -H 'Origin: https://privacy.shardsinc.co.uk' \
+            --data '{"email":"not-active-breach@hibp-integration-tests.com","consent":true}' -o /tmp/hibp-no-match.json
+          node -e "const j=require('/tmp/hibp-no-match.json');if(j.source!=='Have I Been Pwned'||j.mode!=='official_integration_test'||j.count!==0||j.matched!==false||j.breaches.length!==0)process.exit(1);console.log('Actual HIBP no-active-breach fixture PASS')"
+
