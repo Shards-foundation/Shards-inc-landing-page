@@ -1,0 +1,78 @@
+name: Shards Security live smoke
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "privacy/security-worker.js"
+      - "privacy/security-schema.sql"
+      - ".github/workflows/security-smoke.yml"
+jobs:
+  security-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse security worker and browser modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check privacy/security-worker.js
+          node - <<'NODE'
+          const fs=require('node:fs'),vm=require('node:vm');
+          const s=fs.readFileSync('privacy/security-worker.js','utf8');
+          const m=s.match(/^const CLIENT=("(?:\\.|[^"\\])*");/m);
+          if(!m)throw Error('Client script not present');
+          const c=JSON.parse(m[1]);
+          new vm.Script(c,{filename:'security-app.js'});
+          for(const x of ['phishRun','surfaceRun','bleCheck','refreshTelemetry'])if(!c.includes(x))throw Error('Missing module: '+x);
+          console.log('Security browser client syntax: PASS');
+          NODE
+      - name: Verify production site and strict headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 4 --retry-delay 2 -D /tmp/security.headers https://security.shardsinc.co.uk/ -o /tmp/security.html
+          grep -F 'Shards Security | Privacy Platform' /tmp/security.html
+          grep -F 'PhishRisk' /tmp/security.html
+          grep -Fi 'content-security-policy:' /tmp/security.headers
+          grep -Fi 'x-frame-options: DENY' /tmp/security.headers
+          curl -fsS --retry 4 --retry-delay 2 https://security.shardsinc.co.uk/app.js -o /tmp/security.js
+          node --check /tmp/security.js
+      - name: Real public status and SIEM controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS https://security.shardsinc.co.uk/api/status -o /tmp/secstatus.json
+          node -e "const x=require('/tmp/secstatus.json');if(!x.sensor.active||x.exports.configured!==false)process.exit(1)"
+          curl -fsS https://security.shardsinc.co.uk/api/siem/schema -o /tmp/schema.json
+          node -e "const x=require('/tmp/schema.json');if(x.schema_version!=='shards.security.decoy.v1'||!x.export_formats.includes('cef'))process.exit(1)"
+          code=$(curl -sS -o /tmp/blocked.json -w '%{http_code}' 'https://security.shardsinc.co.uk/api/events?format=cef')
+          test "$code" = 503
+          code=$(curl -sS -o /dev/null -w '%{http_code}' 'https://security.shardsinc.co.uk/not-found')
+          test "$code" = 404
+      - name: Real passive DNS and URL inspection
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 4 --retry-delay 2 'https://security.shardsinc.co.uk/api/surface?domain=example.com' -o /tmp/surface.json
+          node -e "const x=require('/tmp/surface.json');if(x.domain!=='example.com'||x.checks_succeeded<1||!x.records.A)process.exit(1)"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' 'https://security.shardsinc.co.uk/api/surface?domain=127.0.0.1')
+          test "$code" = 400
+          curl -fsS -X POST 'https://security.shardsinc.co.uk/api/phishrisk' \
+            -H 'Origin: https://security.shardsinc.co.uk' -H 'Content-Type: application/json' \
+            --data '{"url":"http://secure-login-wallet-test.example/verify"}' -o /tmp/phish.json
+          node -e "const x=require('/tmp/phish.json');if(!Number.isInteger(x.score)||x.score<=0||!x.signals?.length)process.exit(1)"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST 'https://security.shardsinc.co.uk/api/phishrisk' \
+            -H 'Origin: https://untrusted.example' -H 'Content-Type: application/json' --data '{"url":"https://example.com"}')
+          test "$code" = 403
+      - name: Decoy is isolated and produces a real recorded signal
+        shell: bash
+        run: |
+          set -euo pipefail
+          before=$(curl -fsS https://security.shardsinc.co.uk/api/telemetry | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).last24h.total")
+          code=$(curl -sS -o /dev/null -w '%{http_code}' https://trap.shardsinc.co.uk/admin)
+          test "$code" = 403
+          after=$(curl -fsS https://security.shardsinc.co.uk/api/telemetry | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).last24h.total")
+          test "$after" -ge "$before"
+          curl -fsS https://trap.shardsinc.co.uk/robots.txt | grep -q '^Disallow:'
+          echo "Decoy count before=$before after=$after; expected sampling cap: 300/hour"
