@@ -1,0 +1,45 @@
+name: Shards Voice Studio production smoke
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "privacy/voice-worker.js"
+      - ".github/workflows/voice-smoke.yml"
+jobs:
+  voice-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse the Worker source
+        run: |
+          node --check privacy/voice-worker.js
+      - name: Validate the published website and CSP
+        run: |
+          set -euo pipefail
+          curl --retry 4 --retry-delay 3 -fsS -D /tmp/voice_headers.txt https://voice.shardsinc.co.uk/ -o /tmp/voice.html
+          grep -F 'Voice Studio | Shards Privacy' /tmp/voice.html
+          grep -F 'Private audio recorder' /tmp/voice.html
+          grep -Fi 'content-security-policy:' /tmp/voice_headers.txt
+          grep -Fi 'x-frame-options: DENY' /tmp/voice_headers.txt
+      - name: Validate live browser script syntax
+        run: |
+          set -euo pipefail
+          curl --retry 4 --retry-delay 3 -fsS https://voice.shardsinc.co.uk/studio.js -o /tmp/voice.js
+          node --check /tmp/voice.js
+          grep -q 'MediaRecorder' /tmp/voice.js
+          grep -q 'SpeechRecognition' /tmp/voice.js
+      - name: Confirm provider remains locked without credentials
+        run: |
+          set -euo pipefail
+          curl -fsS https://voice.shardsinc.co.uk/api/status -o /tmp/voice_status.json
+          node -e "const s=require('/tmp/voice_status.json');if(s.elevenlabs.enabled!==false||s.browser.recording!=='local')process.exit(1);console.log('Provider locked, local recorder offered')"
+          code=$(curl -sS -o /tmp/voice_tts.json -w '%{http_code}' -X POST 'https://voice.shardsinc.co.uk/api/tts' -H 'Origin: https://voice.shardsinc.co.uk' -H 'Content-Type: application/json' --data '{"text":"Test only", "voice_id":"JBFqnCBsd6RMkjVDRZzb"}')
+          test "$code" = 503
+          node -e "const j=require('/tmp/voice_tts.json');if(!j.error.includes('not configured'))process.exit(1)"
+          code=$(curl -sS -o /tmp/voice_transcribe.json -w '%{http_code}' -X POST 'https://voice.shardsinc.co.uk/api/transcribe' -H 'Origin: https://voice.shardsinc.co.uk')
+          test "$code" = 503
+      - name: Unknown paths fail closed
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' https://voice.shardsinc.co.uk/non-existent)
+          test "$code" = 404
