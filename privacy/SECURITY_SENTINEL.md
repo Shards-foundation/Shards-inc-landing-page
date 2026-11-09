@@ -28,9 +28,20 @@
 - Browser script JavaScript and Worker source syntax validated before deployment.
 - All other smoke tests are in GitHub Actions. Do not claim the latest CI passed until checked.
 
+### Public API quotas and correlated signals
+
+- `/api/surface`: 600 global DNS audit calls/UTC day; each audit makes at most six Cloudflare DoH requests.
+- `/api/phishrisk`: 1,500 global link analyses/UTC day; performs at most one DNS A lookup per hostname.
+- The shared daily counters are atomically incremented in D1. Exhaustion yields HTTP 429, and quota-store errors fail closed; **these are service-wide budgets, not per-user rate limits**. Cloudflare WAF/Turnstile/identity-based controls are still required before retail launch.
+- `GET /api/alerts`: correlated, non-attributable alerts for request-family + UTC-hour groups with at least three recorded decoy hits. This reduces emitted signal groups but does not validate malicious intent or eliminate false positives.
+
+### Native offline Android observation
+
+`privacy/android-ble-observer/` now contains a compiled, consent-based Android BLE observer with no Internet permission. The debug APK was produced by GitHub Actions run `42711369953` and is available as `shards-offline-ble-debug`. It reports foreground BLE advertising observations using RAM-only pseudonymous IDs and RSSI. No background monitoring or intrusion detection is claimed, and a real-device run has not been verified.
+
 ### Data minimisation, lifecycle and limitations
 
-This first release records no raw source IP or request content. D1 sampling is capped at 300 captured records/hour; drops are not currently counted. Existing opportunistic pruning on decoy traffic deletes events older than seven days; periodic guaranteed cleanup requires a scheduled Cloudflare cron trigger, and access-control/log retention for any future per-customer export requires audit.
+This first release records no raw source IP or request content. D1 sampling is capped at 300 captured records/hour; drops are not currently counted. A scheduled Cloudflare Worker cron trigger at **03:17 UTC daily** runs a D1 DELETE for decoy events older than seven days and expired query-budget counters. The cron is configured through the Cloudflare API. The first scheduled execution has not yet occurred, so actual post-expiry pruning remains to be verified; retention and access controls for per-customer exports still require review.
 
 There is no honeypot shell or command execution, no active defensive response on Shards' actual production services, no attack-back, no real-time threat intelligence or AI autonomous agent, no guarantee of zero false positives. A probe hitting the isolated decoy is a signal about the decoy, not proof any attack on the primary site was prevented.
 
