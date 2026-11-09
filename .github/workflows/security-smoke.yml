@@ -65,6 +65,16 @@ jobs:
           code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST 'https://security.shardsinc.co.uk/api/phishrisk' \
             -H 'Origin: https://untrusted.example' -H 'Content-Type: application/json' --data '{"url":"https://example.com"}')
           test "$code" = 403
+      - name: Correlated low-noise alerts and private export
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 4 --retry-delay 2 https://security.shardsinc.co.uk/api/alerts -o /tmp/alerts.json
+          node -e "const x=require('/tmp/alerts.json');if(x.grouping!=='rule family + UTC hour'||x.min_hits_to_alert!==3||!Array.isArray(x.alerts))process.exit(1);console.log('Rule-family correlation PASS')"
+          curl -fsS https://security.shardsinc.co.uk/api/status -o /tmp/sec-status.json
+          node -e "const x=require('/tmp/sec-status.json');if(x.exports.configured!==false)process.exit(1)"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' 'https://security.shardsinc.co.uk/api/surface?domain=localhost')
+          test "$code" = 400
       - name: Decoy is isolated and produces a real recorded signal
         shell: bash
         run: |
