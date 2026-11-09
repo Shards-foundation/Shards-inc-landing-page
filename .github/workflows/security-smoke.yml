@@ -34,10 +34,12 @@ jobs:
           curl -fsS --retry 4 --retry-delay 2 -D /tmp/security.headers https://security.shardsinc.co.uk/ -o /tmp/security.html
           grep -F 'Shards Security | Privacy Platform' /tmp/security.html
           grep -F 'PhishRisk' /tmp/security.html
+          grep -F 'DOWNLOAD BRANDED REPORT' /tmp/security.html
           grep -Fi 'content-security-policy:' /tmp/security.headers
           grep -Fi 'x-frame-options: DENY' /tmp/security.headers
           curl -fsS --retry 4 --retry-delay 2 https://security.shardsinc.co.uk/app.js -o /tmp/security.js
           node --check /tmp/security.js
+          grep -q 'reportDownload' /tmp/security.js
       - name: Real public status and SIEM controls
         shell: bash
         run: |
