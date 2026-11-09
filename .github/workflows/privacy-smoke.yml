@@ -1,0 +1,31 @@
+name: Privacy portal public smoke
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "privacy/**"
+      - ".github/workflows/privacy-smoke.yml"
+jobs:
+  public-live-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Fetch the actual custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 8 --retry-delay 5 --connect-timeout 8 --max-time 30             -D /tmp/portal-headers.txt https://privacy.shardsinc.co.uk/             -o /tmp/privacy.html
+          grep -F 'Shards Privacy | Control Your Exposure' /tmp/privacy.html
+          grep -F 'Duck Email Protection' /tmp/privacy.html
+          grep -F 'Burner Numbers' /tmp/privacy.html
+          grep -i 'x-frame-options: DENY' /tmp/portal-headers.txt
+      - name: Verify live telemetry API, without logging client IP
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 8 --retry-delay 5 --connect-timeout 8 --max-time 30             https://privacy.shardsinc.co.uk/api/network -o /tmp/network.json
+          node -e "const f=require('fs');const j=JSON.parse(f.readFileSync('/tmp/network.json','utf8'));if(!j.ip||!j.country||!j.colo)process.exit(1);console.log('HTTP API contract: PASS')"
+      - name: Assert unknown path is not a fake screen
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' https://privacy.shardsinc.co.uk/does-not-exist)
+          test "$code" = "404"
