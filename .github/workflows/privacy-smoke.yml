@@ -75,3 +75,30 @@ jobs:
           grep -q '^1E4C9B93F3F0682250B6CF8331B7EE68FD8:' /tmp/pwned-range.txt
           code=$(curl -sS -o /dev/null -w '%{http_code}' 'https://privacy.shardsinc.co.uk/api/pwned?prefix=invalid')
           test "$code" = 400
+
+      - name: Verify official HIBP email integration and privacy guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 4 --retry-delay 2 https://privacy.shardsinc.co.uk/lab -o /tmp/privacy-email.html
+          grep -F 'Has your email appeared in a data breach?' /tmp/privacy-email.html
+          grep -F 'CHECK EMAIL' /tmp/privacy-email.html
+          grep -F 'Have I Been Pwned' /tmp/privacy-email.html
+          curl -fsS https://privacy.shardsinc.co.uk/api/email-breaches/status -o /tmp/hibp-status.json
+          node -e "const j=require('/tmp/hibp-status.json');if(j.source!=='Have I Been Pwned'||j.mode!=='official_test_only'||j.can_query_real_addresses!==false)process.exit(1);console.log('Official test mode verified')"
+          code=$(curl -sS -o /tmp/hibp-deny.json -w '%{http_code}' -X POST https://privacy.shardsinc.co.uk/api/email-breaches \
+            -H 'Content-Type: application/json' -H 'Origin: https://privacy.shardsinc.co.uk' \
+            --data '{"email":"someone@example.org","consent":true}')
+          test "$code" = 503
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST https://privacy.shardsinc.co.uk/api/email-breaches \
+            -H 'Content-Type: application/json' -H 'Origin: https://privacy.shardsinc.co.uk' \
+            --data '{"email":"multiple-breaches@hibp-integration-tests.com","consent":false}')
+          test "$code" = 400
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST https://privacy.shardsinc.co.uk/api/email-breaches \
+            -H 'Content-Type: application/json' -H 'Origin: https://not-shards.example' \
+            --data '{"email":"multiple-breaches@hibp-integration-tests.com","consent":true}')
+          test "$code" = 403
+          curl -fsS --retry 2 --retry-delay 4 -X POST https://privacy.shardsinc.co.uk/api/email-breaches \
+            -H 'Content-Type: application/json' -H 'Origin: https://privacy.shardsinc.co.uk' \
+            --data '{"email":"multiple-breaches@hibp-integration-tests.com","consent":true}' -o /tmp/hibp-match.json
+          node -e "const j=require('/tmp/hibp-match.json');if(j.source!=='Have I Been Pwned'||j.mode!=='official_integration_test'||j.count!==3||!j.breaches.includes('Adobe')||JSON.stringify(j).includes('multiple-breaches@'))process.exit(1);console.log('Actual upstream 3-breach fixture PASS')"
