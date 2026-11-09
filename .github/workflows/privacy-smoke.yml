@@ -102,3 +102,9 @@ jobs:
             -H 'Content-Type: application/json' -H 'Origin: https://privacy.shardsinc.co.uk' \
             --data '{"email":"multiple-breaches@hibp-integration-tests.com","consent":true}' -o /tmp/hibp-match.json
           node -e "const j=require('/tmp/hibp-match.json');if(j.source!=='Have I Been Pwned'||j.mode!=='official_integration_test'||j.count!==3||!j.breaches.includes('Adobe')||JSON.stringify(j).includes('multiple-breaches@'))process.exit(1);console.log('Actual upstream 3-breach fixture PASS')"
+
+          curl -fsS --retry 2 --retry-delay 4 -X POST https://privacy.shardsinc.co.uk/api/email-breaches \
+            -H 'Content-Type: application/json' -H 'Origin: https://privacy.shardsinc.co.uk' \
+            --data '{"email":"not-active-breach@hibp-integration-tests.com","consent":true}' -o /tmp/hibp-no-match.json
+          node -e "const j=require('/tmp/hibp-no-match.json');if(j.source!=='Have I Been Pwned'||j.mode!=='official_integration_test'||j.count!==0||j.matched!==false||j.breaches.length!==0)process.exit(1);console.log('Actual HIBP no-active-breach fixture PASS')"
+
