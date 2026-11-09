@@ -16,7 +16,7 @@
 4. PhishRisk URL structural scoring with explainable rules and fixed-provider DNS A lookup. It does **not** fetch/open the destination or claim that heuristics prove a URL is legitimate or malicious.
 5. LeakScan passive DNS posture checking with A, AAAA, MX, TXT/SPF, DMARC and CAA. No SSRF, service enumeration, port scanning, vulnerability checking, threat data or dark-web search.
 6. Private export supports CEF lines and NDJSON events, with bearer key `SECURITY_EXPORT_KEY` stored only as a Cloudflare secret. The export remains **disabled** (HTTP 503) while the key is absent. It is an export endpoint, not yet an installed Splunk/QRadar/Sentinel forwarding integration.
-7. Database tables for tenant and deployment metadata. **Only shards-internal is active**. Customer isolation, payments, onboarding, distributed sensor issuance, cross-site deployment and white-labelled licensed reports are not built.
+7. Database tables for tenant and deployment metadata. **Only shards-internal is active**. Customer isolation, payments, onboarding, distributed sensor issuance and cross-site deployment are not built. **Local customer-branded HTML report export** now works from a successful DNS audit; this is not a hosted multi-tenant reporting or licensing platform.
 8. On-device Bluetooth capability inspection of the Web Bluetooth API, including previously permissioned devices only. It is **not** a continuous or offline radio threat detector.
 
 ### Live evidence (2026-11-09)
@@ -27,6 +27,10 @@
 - `https://trap.shardsinc.co.uk/admin`: HTTP 403; two independent test hits subsequently confirmed **in D1** as `admin-console-probe`; public `/api/telemetry` returned total 2 and corresponding group.
 - Browser script JavaScript and Worker source syntax validated before deployment.
 - All other smoke tests are in GitHub Actions. Do not claim the latest CI passed until checked.
+
+### Real client-branded reports
+
+After `LeakScan` completes an actual passive DNS audit, the browser enables **Download Branded Report**. An optional organisation name is escaped and inserted into a print-friendly, locally generated HTML audit containing the real DNS answers, check time, observations and explicit limitations. No report upload or provider billing occurs. The action is implemented and browser JavaScript parses, but an interactive handset click/download acceptance test is not yet recorded. This is **not** MSSP white-label deployment, customer account isolation or volume licensing.
 
 ### Public API quotas and correlated signals
 
