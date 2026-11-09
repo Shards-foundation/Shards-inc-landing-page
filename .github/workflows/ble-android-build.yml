@@ -41,6 +41,20 @@ jobs:
           grep -q 'BLUETOOTH_SCAN' privacy/android-ble-observer/app/src/main/AndroidManifest.xml
       - name: Build actual Android debug APK
         run: gradle -p privacy/android-ble-observer :app:assembleDebug --no-daemon --stacktrace
+      - name: Inspect compiled APK for offline permissions and launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=privacy/android-ble-observer/app/build/outputs/apk/debug/app-debug.apk
+          AAPT="${ANDROID_HOME}/build-tools/35.0.0/aapt"
+          test -x "$AAPT"
+          "$AAPT" dump permissions "$APK" > /tmp/shards-ble-permissions.txt
+          if grep -Fq 'android.permission.INTERNET' /tmp/shards-ble-permissions.txt; then
+            echo 'Compiled APK includes unexpected INTERNET permission'
+            exit 1
+          fi
+          "$AAPT" dump badging "$APK" | grep -q "launchable-activity: name='co.uk.shardsinc.signalwatch.MainActivity'"
+          echo "Compiled APK is launchable and declares no Internet permission."
       - name: Upload device-test APK (unsigned for distribution)
         uses: actions/upload-artifact@v4
         with:
