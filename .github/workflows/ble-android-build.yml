@@ -1,0 +1,42 @@
+name: Android offline BLE sensor build
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "privacy/android-ble-observer/**"
+      - ".github/workflows/ble-android-build.yml"
+jobs:
+  offline-sensor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Static check that radio observer has no Internet permission
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f privacy/android-ble-observer/app/src/main/AndroidManifest.xml
+          if grep -Eq '<uses-permission[^>]*android\.permission\.INTERNET' privacy/android-ble-observer/app/src/main/AndroidManifest.xml; then
+            echo 'Unexpected Android INTERNET permission'
+            exit 1
+          fi
+          grep -q 'BLUETOOTH_SCAN' privacy/android-ble-observer/app/src/main/AndroidManifest.xml
+      - name: Build actual Android debug APK
+        run: gradle -p privacy/android-ble-observer :app:assembleDebug --no-daemon --stacktrace
+      - name: Upload device-test APK (unsigned for distribution)
+        uses: actions/upload-artifact@v4
+        with:
+          name: shards-offline-ble-debug
+          path: privacy/android-ble-observer/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
