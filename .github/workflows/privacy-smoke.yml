@@ -29,3 +29,48 @@ jobs:
         run: |
           code=$(curl -sS -o /dev/null -w '%{http_code}' https://privacy.shardsinc.co.uk/does-not-exist)
           test "$code" = "404"
+
+      - name: Parse the deployed worker and local browser-tool JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check privacy/worker.js
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const vm = require('node:vm');
+          const source = fs.readFileSync('privacy/worker.js', 'utf8');
+          const match = source.match(/^const LAB_CLIENT = ("(?:\\.|[^"\\])*");/m);
+          if (!match) throw Error('Missing privacy client script');
+          const client = JSON.parse(match[1]);
+          new vm.Script(client, { filename: 'privacy-lab.js' });
+          for (const required of ['vaultEncrypt', 'breachCheck', 'dnsCheck', 'stripImage', 'totpGenerate']) {
+            if (!client.includes(required)) throw Error('Tool missing: ' + required);
+          }
+          console.log('Browser privacy tools syntax and module wiring: PASS');
+          NODE
+      - name: Verify public Privacy Lab page and JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 4 --retry-delay 2 https://privacy.shardsinc.co.uk/lab -o /tmp/lab.html
+          grep -F 'Privacy Lab | Shards Privacy' /tmp/lab.html
+          grep -F 'Breached password check' /tmp/lab.html
+          grep -F 'Encrypted notes vault' /tmp/lab.html
+          curl -fsS --retry 4 --retry-delay 2 https://privacy.shardsinc.co.uk/lab.js -o /tmp/lab.js
+          node --check /tmp/lab.js
+      - name: Verify real encrypted DNS and input validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 4 --retry-delay 2 'https://privacy.shardsinc.co.uk/api/dns?name=example.com&type=A' -o /tmp/dns.json
+          node -e "const j=require('/tmp/dns.json');if(j.Status!==0||!(j.Answer||[]).some(x=>x.type===1&&x.data))process.exit(1)"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' 'https://privacy.shardsinc.co.uk/api/dns?name=127.0.0.1&type=A')
+          test "$code" = 400
+      - name: Verify known-compromised password via k-anonymity
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 4 --retry-delay 2 'https://privacy.shardsinc.co.uk/api/pwned?prefix=5BAA6' -o /tmp/pwned-range.txt
+          grep -q '^1E4C9B93F3F0682250B6CF8331B7EE68FD8:' /tmp/pwned-range.txt
+          code=$(curl -sS -o /dev/null -w '%{http_code}' 'https://privacy.shardsinc.co.uk/api/pwned?prefix=invalid')
+          test "$code" = 400
