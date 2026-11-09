@@ -34,3 +34,11 @@ CREATE TABLE IF NOT EXISTS decoy_deployments (
 );
 INSERT OR IGNORE INTO decoy_deployments(deployment_id,tenant_id,hostname,status,created_at)
 VALUES('internal-cf','shards-internal','trap.shardsinc.co.uk','active',datetime('now'));
+
+CREATE TABLE IF NOT EXISTS api_budgets (
+ day TEXT NOT NULL,
+ route TEXT NOT NULL,
+ calls INTEGER NOT NULL DEFAULT 0 CHECK(calls>=0),
+ PRIMARY KEY(day,route)
+);
+CREATE INDEX IF NOT EXISTS idx_api_budgets_day ON api_budgets(day);
