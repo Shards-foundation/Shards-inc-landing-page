@@ -1,0 +1,18 @@
+{
+  "version": null,
+  "licence": "MIT",
+  "python": ">=3.9",
+  "provenance": "Not verified",
+  "stars": null,
+  "lastCommit": null,
+  "repos": [{
+    "name": "Shards-kernel",
+    "url": "https://github.com/Shards-foundation/Shards-kernel",
+    "description": "Deterministic execution arbitration and audit for AI agents.",
+    "stars": null,
+    "pushedAt": null,
+    "badge": "Flagship"
+  }],
+  "fetchedAt": null,
+  "source": "Fallback"
+}

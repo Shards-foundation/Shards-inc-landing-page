@@ -1,0 +1,42 @@
+name: Quality gate
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      COMPANY_NUMBER: ${{ secrets.COMPANY_NUMBER }}
+      COMPANY_JURISDICTION: ${{ secrets.COMPANY_JURISDICTION }}
+      COMPANY_REGISTERED_OFFICE: ${{ secrets.COMPANY_REGISTERED_OFFICE }}
+      CONTACT_EMAIL: ${{ secrets.CONTACT_EMAIL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.21.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm claims:check
+      - run: pnpm audit --audit-level high
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: site-e2e-evidence
+          path: |
+            playwright-report/
+            test-results/
+            artifacts/
