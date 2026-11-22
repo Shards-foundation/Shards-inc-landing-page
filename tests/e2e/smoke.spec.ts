@@ -21,4 +21,15 @@ test('privacy, video consent and accessibility',async({page})=>{
   await expect(page.locator('iframe[src*="youtube-nocookie.com"]')).toHaveCount(1);
   await page.goto('/privacy');
   await expect(page.getByRole('heading',{name:'Privacy.'})).toBeVisible();
+  await expect(page.locator('header a.wordmark')).toHaveAttribute('href','/');
+  const navLinks=page.locator('header nav.nav-links a');
+  await expect(navLinks).toHaveCount(4);
+  for (const [i,id] of ['thesis','kernel','systems','contact'].entries()) {
+    await expect(navLinks.nth(i)).toHaveAttribute('href',`/#${id}`);
+  }
+  const nav=page.getByRole('navigation',{name:'Main navigation'});
+  if (await nav.isVisible()) {
+    await nav.getByRole('link',{name:'THESIS'}).click();
+    await expect(page).toHaveURL(/\/#thesis$/);
+  }
 });

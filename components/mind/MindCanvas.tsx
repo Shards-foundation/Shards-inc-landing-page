@@ -1,9 +1,9 @@
 /* eslint-disable react-hooks/immutability -- GPU uniforms are intentionally mutated in useFrame without React renders. */
 'use client';
 
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { PerformanceMonitor, useDetectGPU } from '@react-three/drei';
+import { PerformanceMonitor } from '@react-three/drei';
 import { MeshSurfaceSampler } from 'three/examples/jsm/math/MeshSurfaceSampler.js';
 import { Bloom, ChromaticAberration, EffectComposer, Noise, Vignette } from '@react-three/postprocessing';
 import {
@@ -266,11 +266,6 @@ function Scene({tier}:{tier:Tier}){
     </EffectComposer>}
   </>;
 }
-function GPUCheck({onFailed}:{onFailed:()=>void}) {
-  const gpu=useDetectGPU();
-  useEffect(()=>{ if (gpu.tier === 0) onFailed(); }, [gpu.tier,onFailed]);
-  return null;
-}
 export default function MindCanvas({tier,onFailed}:{tier:Tier;onFailed:()=>void}){
   const [quality,setQuality]=useState<Tier>(tier);
   const [visible,setVisible]=useState(true);
@@ -291,7 +286,6 @@ export default function MindCanvas({tier,onFailed}:{tier:Tier;onFailed:()=>void}
     }}
     fallback={null}
   >
-    <Suspense fallback={null}><GPUCheck onFailed={onFailed}/></Suspense>
     <PerformanceMonitor onDecline={()=>setQuality('low')} onIncline={()=>{
       if(tier==='desktop') setQuality('desktop');
     }}/>

@@ -75,6 +75,7 @@ for i in range(650):
     draw.line([(x,y),(x+r.uniform(-5,5),y-length)],fill=(178,207,207,r.randrange(40,140)),width=1)
 # mild sharpen after downsample
 im=im.convert('RGB')
-out=Path('/mnt/data/shards-inc-site/public/images/mind-poster.webp')
+out=Path(__file__).resolve().parent.parent/'public'/'images'/'mind-poster.webp'
+out.parent.mkdir(parents=True,exist_ok=True)
 im.save(out,format='WEBP',quality=79,method=6)
 print(out,out.stat().st_size)
